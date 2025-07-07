@@ -85,7 +85,7 @@ app.post('/orders', authMiddleware, async (req, res) => {
     return res.status(403).json({ error: 'Brak uprawnień do tworzenia zleceń' });
   }
 
-  const { invoice, carrier, client_name, items } = req.body;
+  const { invoice, carrier, client_name, purchase_date, items } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Brak pozycji produktowych' });
@@ -97,9 +97,9 @@ app.post('/orders', authMiddleware, async (req, res) => {
     const orderNumber = `ZL-${nextNumber.toString().padStart(5, '0')}`;
 
     const [result] = await db.query(
-      `INSERT INTO orders (order_number, invoice, carrier, client_name)
-       VALUES (?, ?, ?, ?)`,
-      [orderNumber, invoice, carrier, client_name]
+      `INSERT INTO orders (order_number, invoice, carrier, client_name, purchase_date)
+      VALUES (?, ?, ?, ?, ?)`,
+      [orderNumber, invoice, carrier, client_name, purchase_date || null]
     );
 
     const orderId = result.insertId;
