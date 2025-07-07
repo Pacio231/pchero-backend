@@ -115,7 +115,7 @@ app.post('/orders', authMiddleware, async (req, res) => {
 app.get('/orders/queue', authMiddleware, async (req, res) => {
   try {
     const [orders] = await db.query(
-      'SELECT * FROM orders WHERE status IN ('new', 'taken') ORDER BY created_at DESC'
+      "SELECT * FROM orders WHERE status IN ('new', 'taken') ORDER BY created_at DESC"
     );
     res.json(orders);
   } catch (err) {
