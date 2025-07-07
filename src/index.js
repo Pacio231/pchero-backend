@@ -179,3 +179,23 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Serwer działa na porcie ${PORT}`);
 });
+
+// ✅ Zwolnij zlecenie
+app.post('/orders/release/:id', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const orderId = req.params.id;
+
+  try {
+    // upewnij się, że to zlecenie należy do tego użytkownika
+    const [orders] = await db.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!orders.length || orders[0].assigned_to !== userId) {
+      return res.status(403).json({ error: 'Nie możesz zwolnić tego zlecenia' });
+    }
+
+    await db.query('UPDATE orders SET assigned_to = NULL, status = "new" WHERE id = ?', [orderId]);
+    res.json({ success: true, message: 'Zlecenie zwolnione' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
