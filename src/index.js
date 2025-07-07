@@ -81,7 +81,7 @@ app.get('/auth/me', authMiddleware, (req, res) => {
 
 // 📦 Tworzenie zlecenia
 app.post('/orders', authMiddleware, async (req, res) => {
-  if (req.user.role !== 'tworzy_zlecenia') {
+  if (!['tworzy_zlecenia', 'admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Brak uprawnień do tworzenia zleceń' });
   }
 
@@ -111,11 +111,12 @@ app.post('/orders', authMiddleware, async (req, res) => {
   }
 });
 
+
 // 📋 Lista zleceń do wykonania
 app.get('/orders/queue', authMiddleware, async (req, res) => {
   try {
     const [orders] = await db.query(
-      "SELECT * FROM orders WHERE status IN ('new', 'taken') ORDER BY created_at DESC"
+      "SELECT orders.*, users.username AS assigned_username FROM orders LEFT JOIN users ON orders.assigned_to = users.id WHERE status IN ('new', 'taken') ORDER BY created_at DESC"
     );
     res.json(orders);
   } catch (err) {
