@@ -85,13 +85,10 @@ app.post('/orders', authMiddleware, async (req, res) => {
     return res.status(403).json({ error: 'Brak uprawnień do tworzenia zleceń' });
   }
 
-  const {
-    product_name, quantity, info, invoice,
-    carrier, client_name
-  } = req.body;
+  const { invoice, carrier, client_name, items } = req.body;
 
-  if (!product_name || !quantity) {
-    return res.status(400).json({ error: 'Brakuje wymaganych pól' });
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Brak pozycji produktowych' });
   }
 
   try {
@@ -99,11 +96,23 @@ app.post('/orders', authMiddleware, async (req, res) => {
     const nextNumber = existingOrders[0].count + 1;
     const orderNumber = `ZL-${nextNumber.toString().padStart(5, '0')}`;
 
-    await db.query(
-      `INSERT INTO orders (order_number, product_name, quantity, info, invoice, carrier, client_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [orderNumber, product_name, quantity, info, invoice, carrier, client_name]
+    const [result] = await db.query(
+      `INSERT INTO orders (order_number, invoice, carrier, client_name)
+       VALUES (?, ?, ?, ?)`,
+      [orderNumber, invoice, carrier, client_name]
     );
+
+    const orderId = result.insertId;
+
+    for (const item of items) {
+      const { product_name, quantity, info } = item;
+      if (!product_name || !quantity) continue;
+      await db.query(
+        `INSERT INTO order_items (order_id, product_name, quantity, info)
+         VALUES (?, ?, ?, ?)`,
+        [orderId, product_name, quantity, info || '']
+      );
+    }
 
     res.json({ success: true, message: 'Zlecenie utworzone', order_number: orderNumber });
   } catch (err) {
@@ -112,17 +121,33 @@ app.post('/orders', authMiddleware, async (req, res) => {
 });
 
 
-// 📋 Lista zleceń do wykonania
+// 📋 Lista zleceń do wykonania (z produktami)
 app.get('/orders/queue', authMiddleware, async (req, res) => {
   try {
-    const [orders] = await db.query(
-      "SELECT orders.*, users.username AS assigned_username FROM orders LEFT JOIN users ON orders.assigned_to = users.id WHERE status IN ('new', 'taken') ORDER BY created_at DESC"
-    );
+    // Pobierz zlecenia wraz z loginem przypisanego pracownika
+    const [orders] = await db.query(`
+      SELECT orders.*, users.username AS assigned_username
+      FROM orders
+      LEFT JOIN users ON orders.assigned_to = users.id
+      WHERE orders.status IN ('new', 'taken')
+      ORDER BY orders.created_at DESC
+    `);
+
+    // Dla każdego zlecenia pobierz produkty (items)
+    for (const order of orders) {
+      const [items] = await db.query(
+        'SELECT product_name, quantity, info FROM order_items WHERE order_id = ?',
+        [order.id]
+      );
+      order.items = items;
+    }
+
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // 🧍 Przypisanie zlecenia do siebie
 app.post('/orders/take/:id', authMiddleware, async (req, res) => {
@@ -138,20 +163,31 @@ app.post('/orders/take/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/orders/my', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Brak tokena' });
-
-  const token = auth.split(' ')[1];
+// 📋 Lista moich zleceń do wykonania (z produktami)
+app.get('/orders/my', authMiddleware, async (req, res) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const [rows] = await db.query('SELECT * FROM orders WHERE assigned_to = ?', [decoded.id]);
-    res.json(rows);
-  } catch (e) {
-    res.status(401).json({ error: 'Token nieprawidłowy' });
+    const userId = req.user.id;
+
+    // Pobierz zlecenia przypisane do użytkownika
+    const [orders] = await db.query(
+      'SELECT * FROM orders WHERE assigned_to = ? ORDER BY created_at DESC',
+      [userId]
+    );
+
+    // Dołącz produkty (items) do każdego zlecenia
+    for (const order of orders) {
+      const [items] = await db.query(
+        'SELECT product_name, quantity, info FROM order_items WHERE order_id = ?',
+        [order.id]
+      );
+      order.items = items;
+    }
+
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
-
 
 // ✅ Zakończenie zlecenia
 app.post('/orders/finish/:id', authMiddleware, async (req, res) => {
