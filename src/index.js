@@ -11,7 +11,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// REJESTRACJA
+// 🔹 Test: sprawdzenie czy serwer działa
+app.get('/', (req, res) => {
+  res.send('Serwer działa!');
+});
+
+// 🔐 Rejestracja użytkownika
 app.post('/auth/register', async (req, res) => {
   const { username, password, role } = req.body;
   if (!username || !password || !role) {
@@ -20,14 +25,17 @@ app.post('/auth/register', async (req, res) => {
 
   try {
     const hash = await bcrypt.hash(password, 10);
-    await db.query('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', [username, hash, role]);
+    await db.query(
+      'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
+      [username, hash, role]
+    );
     res.json({ success: true, message: 'Użytkownik zarejestrowany' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// LOGOWANIE
+// 🔐 Logowanie użytkownika
 app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -39,28 +47,17 @@ app.post('/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Zły login lub hasło' });
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '12h' }
+    );
     res.json({ token });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// TOKEN
+// 🔐 Sprawdzenie tokena JWT
 app.get('/auth/me', (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Brak tokena' });
-
-  const token = auth.split(' ')[1];
-  try {
-    const data = jwt.verify(token, process.env.JWT_SECRET);
-    res.json({ id: data.id, role: data.role });
-  } catch (e) {
-    res.status(401).json({ error: 'Token nieprawidłowy' });
-  }
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Serwer działa na porcie ${PORT}`);
-});
+  const auth = req.head
