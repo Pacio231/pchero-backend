@@ -115,7 +115,7 @@ app.post('/orders', authMiddleware, async (req, res) => {
 app.get('/orders/queue', authMiddleware, async (req, res) => {
   try {
     const [orders] = await db.query(
-      'SELECT * FROM orders WHERE status = "new" ORDER BY created_at ASC'
+      'SELECT * FROM orders WHERE status IN ('new', 'taken') ORDER BY created_at DESC'
     );
     res.json(orders);
   } catch (err) {
@@ -136,6 +136,21 @@ app.post('/orders/take/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get('/orders/my', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Brak tokena' });
+
+  const token = auth.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const [rows] = await db.query('SELECT * FROM orders WHERE assigned_to = ?', [decoded.id]);
+    res.json(rows);
+  } catch (e) {
+    res.status(401).json({ error: 'Token nieprawidłowy' });
+  }
+});
+
 
 // ✅ Zakończenie zlecenia
 app.post('/orders/finish/:id', authMiddleware, async (req, res) => {
